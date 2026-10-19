@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Local Supabase defaults (public, documented values for the CLI stack).
+      NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+      NEXT_PUBLIC_APP_NAME: Fieldbook
+    steps:
+      - uses: actions/checkout@v4
+      - run: corepack enable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck, lint, unit tests
+        run: |
+          pnpm typecheck
+          pnpm lint
+          pnpm test
+
+      - name: Start Supabase (migrations dry run) and run RLS tests
+        run: |
+          pnpm db:start
+          pnpm test:rls
+
+      - name: Generated types are up to date
+        run: |
+          pnpm db:types
+          git diff --exit-code src/lib/database.types.ts
+
+      - name: Build and check the client bundle for secrets
+        run: |
+          eval "$(pnpm --silent supabase status -o env | sed 's/^/export /')"
+          export NEXT_PUBLIC_SUPABASE_ANON_KEY="$ANON_KEY" SUPABASE_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY"
+          pnpm build
+          pnpm check:bundle
+
+      - name: Python client tests
+        working-directory: clients/python
+        run: |
+          pip install -r requirements.txt
+          python -m unittest test_fieldbook_client

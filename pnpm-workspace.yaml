@@ -1,0 +1,6 @@
+allowBuilds:
+  unrs-resolver: true
+  sharp: true
+  supabase: true
+  esbuild: true
+  '@tailwindcss/oxide': true
